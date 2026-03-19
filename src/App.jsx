@@ -74,101 +74,52 @@ const App = () => {
   const handleSaveFiscal = async () => {
     console.log("🚀 Iniciando guardado de datos fiscales...");
     console.log("📦 Contexto actual:", context);
-
-    if (!context || !context.account) {
-        const msg = "❌ Error: No se detectó la cuenta de Monday. Asegurate de estar dentro de un tablero.";
-        console.error(msg);
-        alert(msg);
-        monday.execute("notice", { message: msg, type: "error" });
-        return;
-    }
-
-    setIsLoading(true);
+    if (!context || !context.account) return;
+    setLoading(true);
     try {
-        const payload = {
-            monday_account_id: context.account.id.toString(),
-            business_name: fiscal.razonSocial,
-            cuit: fiscal.cuit.replace(/-/g, ""), // Limpiamos guiones
-            iva_condition: fiscal.condicionIva,
-            default_point_of_sale: parseInt(fiscal.puntoVenta) || 0,
-            domicilio: fiscal.domicilio,
-            fecha_inicio: fiscal.fechaInicio
-        };
+      const payload = {
+        monday_account_id: context.account.id.toString(),
+        business_name: fiscal.businessName,
+        cuit: fiscal.cuit,
+        iva_condition: fiscal.ivaCondition,
+        default_point_of_sale: parseInt(fiscal.pos),
+        domicilio: fiscal.domicilio,
+        fecha_inicio: fiscal.fechaInicio
+      };
 
-        console.log("📤 Enviando payload al backend:", `${API_URL}/companies`, payload);
-
-        const response = await axios.post(`${API_URL}/companies`, payload);
-        
-        console.log("✅ Respuesta del servidor:", response.data);
-        
-        alert("¡Éxito! Los datos se guardaron correctamente.");
-        monday.execute("notice", {
-            message: "Datos fiscales guardados con éxito en la base de datos",
-            type: "success",
-            duration: 5000
-        });
+      const response = await axios.post(`${BACKEND_URL}/companies`, payload);
+      alert("¡Éxito! Datos fiscales guardados.");
     } catch (err) {
-        console.error("❌ Error detallado de Axios:", err);
-        const errorMsg = err.response?.data?.error || err.message || "Error desconocido";
-        const detailedError = err.response?.data?.details ? `\n\nDetalle técnico: ${err.response.data.details}` : "";
-        
-        alert("Error al guardar: " + errorMsg + detailedError);
-        
-        monday.execute("notice", {
-            message: "Error al guardar: " + errorMsg,
-            type: "error"
-        });
+      const errorMsg = err.response?.data?.error || err.message;
+      const detailed = err.response?.data?.details ? `\n\nDetalle: ${err.response.data.details}` : "";
+      alert("Error: " + errorMsg + detailed);
     } finally {
-        setIsLoading(false);
+      setLoading(false);
     }
   };
 
   const handleUploadCertificates = async () => {
-    if (!crtFile || !keyFile) {
-        monday.execute("notice", { message: "Por favor, seleccioná ambos archivos (.crt y .key)", type: "error" });
-        return;
-    }
+    if (!files.crt || !files.key || !context) return;
+    setLoading(true);
+    const formData = new FormData();
+    formData.append("crt", files.crt);
+    formData.append("key", files.key);
+    formData.append("monday_account_id", context.account.id.toString());
 
-    if (!context || !context.account) {
-        monday.execute("notice", { message: "Error: No se detectó la cuenta de Monday", type: "error" });
-        return;
-    }
-
-    setIsLoading(true);
     try {
-        const formData = new FormData();
-        formData.append("monday_account_id", context.account.id.toString());
-        formData.append("crt", crtFile);
-        formData.append("key", keyFile);
-
-        await axios.post(`${API_URL}/certificates`, formData, {
-            headers: { "Content-Type": "multipart/form-data" }
-        });
-
-        monday.execute("notice", {
-            message: "Certificados subidos y encriptados correctamente",
-            type: "success",
-            duration: 5000
-        });
+      await axios.post(`${BACKEND_URL}/certificates`, formData);
+      alert("Certificados subidos correctamente.");
     } catch (err) {
-        console.error("Error al subir certificados:", err);
-        monday.execute("notice", {
-            message: "Error al subir certificados. Verificá el servidor backend.",
-            type: "error"
-        });
+      alert("Error al subir certificados.");
     } finally {
-        setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  /* ─── RENDER ─── */
   return (
     <div className="app-container">
-      {/* ─── SIDEBAR ─── */}
       <aside className="sidebar">
         <div className="sidebar-header">
-          <div className="sidebar-logo">FE</div>
-          <span className="sidebar-title">Facturación<br/>Electrónica</span>
         </div>
 
         <nav className="sidebar-nav">
