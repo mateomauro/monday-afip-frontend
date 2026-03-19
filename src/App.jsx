@@ -33,6 +33,7 @@ const MENU_ITEMS = [
   { id: "datos", label: "Datos Fiscales", icon: <IconBuilding /> },
   { id: "certificados", label: "Certificados AFIP", icon: <IconCert /> },
   { id: "mapping", label: "Mapeo de Columnas", icon: <IconList /> },
+  { id: "mapping_v2", label: "Mapeo Visual (Nuevo)", icon: <IconList /> },
   { id: "invoices", label: "Emitir Facturas", icon: <IconFile /> },
 ];
 
@@ -179,6 +180,18 @@ const App = () => {
       setIsLoading(false);
     }
   };
+
+  const renderVisualSelect = (fieldId, placeholderText) => (
+    <select
+      className="invoice-preview-select"
+      value={mapping[fieldId] || ""}
+      onChange={e => setMapping({...mapping, [fieldId]: e.target.value})}
+      title={placeholderText}
+    >
+      <option value="">⚙️ Map: {placeholderText}</option>
+      {columns.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+    </select>
+  );
 
   return (
     <div className="app-container">
@@ -426,6 +439,103 @@ const App = () => {
             <div className="form-actions">
               <button className="btn-primary" onClick={() => alert("Mapeo guardado localmente")}>
                 Guardar Mapeo
+              </button>
+            </div>
+          </section>
+        )}
+
+        {/* ═══ SECCIÓN: MAPEO VISUAL V2 ═══ */}
+        {activeSection === "mapping_v2" && (
+          <section className="section" style={{maxWidth: "850px"}}>
+            <div className="section-header">
+              <h1 className="section-title">Mapeo Visual de Factura</h1>
+              <p className="section-subtitle">
+                Mapeá las columnas haciendo click directamente en los campos de una factura modelo.
+              </p>
+            </div>
+
+            <div className="invoice-preview-wrapper">
+              <div className="invoice-preview-container">
+                <div className="original-tag">Original</div>
+                
+                <div className="header-row">
+                    <div className="header-left">
+                        <div className="emisor-name">{fiscal.razonSocial || "TU EMPRESA S.A."}</div>
+                        <div className="emisor-details">
+                            <p className="line"><span className="label">Razón Social:</span> {fiscal.razonSocial || "Tu Empresa S.A."}</p>
+                            <p className="line"><span className="label">Domicilio Comercial:</span> {fiscal.domicilio || "-"}</p>
+                            <p className="line"><span className="label">Condición frente al IVA:</span> {fiscal.condicionIva}</p>
+                        </div>
+                    </div>
+
+                    <div className="header-center">
+                        <div className="invoice-type-box">
+                            <span className="letter">C</span>
+                            <span className="code">COD. 011</span>
+                        </div>
+                    </div>
+
+                    <div className="header-right">
+                        <div className="factura-title">Factura</div>
+                        <div className="line"><span className="label">Punto de Venta:</span> {fiscal.puntoVenta || "0001"} &nbsp;&nbsp; <span className="label">Comp. Nro:</span> 00000001</div>
+                        <div className="line"><span className="label">Fecha de Emisión:</span> Hoy</div>
+                        <div className="line"><span className="label">CUIT:</span> {fiscal.cuit || "20-12345678-9"}</div>
+                        <div className="line"><span className="label">Inicio Actividades:</span> {fiscal.fechaInicio || "-"}</div>
+                    </div>
+                </div>
+
+                <div className="info-row">
+                    <div style={{display: "flex", marginBottom: "4px"}}>
+                        <div style={{width: "42%"}}><span className="label">CUIT:</span> {renderVisualSelect("receptor_cuit", "CUIT")}</div>
+                        <div style={{flex: 1}}><span className="label">Razón Social:</span> {renderVisualSelect("receptor_razon_social", "Razón Social")}</div>
+                    </div>
+                    <div style={{display: "flex", marginBottom: "4px"}}>
+                        <div style={{width: "42%"}}><span className="label">Condición IVA:</span> {renderVisualSelect("receptor_condicion_frente_iva", "Cond. IVA")}</div>
+                        <div style={{flex: 1}}><span className="label">Domicilio:</span> {renderVisualSelect("receptor_domicilio", "Domicilio Cliente")}</div>
+                    </div>
+                </div>
+
+                <div className="items-section">
+                    <table className="items-table">
+                        <thead>
+                            <tr>
+                                <th style={{width: "40%"}}>Producto / Servicio</th>
+                                <th style={{width: "15%"}}>Cantidad</th>
+                                <th style={{width: "20%"}}>Precio Unit.</th>
+                                <th style={{width: "25%"}}>Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td className="text-left">{renderVisualSelect("concepto", "Concepto/Detalle")}</td>
+                                <td className="text-right">{renderVisualSelect("cantidad", "Cant.")}</td>
+                                <td className="text-right">{renderVisualSelect("precio_unitario", "Precio")}</td>
+                                <td className="text-right">{renderVisualSelect("subtotal", "Subtotal")}</td>
+                            </tr>
+                            <tr style={{height: "80px"}}>
+                                <td colSpan="4" style={{borderLeft: "none", borderRight: "none", borderBottom: "none"}}></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="totals-section">
+                    <table className="totals-table">
+                        <tbody>
+                            <tr>
+                                <td className="label">Importe Total: $</td>
+                                <td className="value">{renderVisualSelect("subtotal", "Total Final")}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+              </div>
+            </div>
+
+            <div className="form-actions" style={{marginTop: "20px"}}>
+              <button className="btn-primary" onClick={() => alert("Mapeo visual guardado exitosamente!")}>
+                Guardar Mapeo Visual
               </button>
             </div>
           </section>
