@@ -79,6 +79,7 @@ const App = () => {
 
   // Mapeo
   const [columns, setColumns] = useState([]);
+  const [subitemColumns, setSubitemColumns] = useState([]);
   const [mapping, setMapping] = useState({});
 
   useEffect(() => {
@@ -132,14 +133,53 @@ const App = () => {
   // Fetch columns when context is ready
   useEffect(() => {
     if (context?.boardId) {
-      monday.api(`query { boards(ids: [${context.boardId}]) { columns { id title type } } }`)
-        .then(res => {
-          if (res.data?.boards?.[0]?.columns) {
-            const cols = res.data.boards[0].columns.map(c => ({
+      monday
+        .api(`query { boards(ids: [${context.boardId}]) { columns { id title type settings_str } } }`)
+        .then(async (res) => {
+          const boardColumns = res.data?.boards?.[0]?.columns || [];
+          if (!boardColumns.length) return;
+
+          const cols = boardColumns.map((c) => ({
+            value: c.id,
+            label: c.title,
+          }));
+          setColumns(cols);
+
+          const subitemsColumn = boardColumns.find((c) => c.type === "subtasks");
+          if (!subitemsColumn?.settings_str) {
+            setSubitemColumns([]);
+            return;
+          }
+
+          let subitemsBoardId = null;
+          try {
+            const settings = JSON.parse(subitemsColumn.settings_str);
+            subitemsBoardId =
+              settings?.boardIds?.[0] ||
+              settings?.boardId ||
+              settings?.board_ids?.[0] ||
+              null;
+          } catch (err) {
+            console.error("No se pudo parsear settings_str de subitems:", err);
+          }
+
+          if (!subitemsBoardId) {
+            setSubitemColumns([]);
+            return;
+          }
+
+          try {
+            const subitemsRes = await monday.api(
+              `query { boards(ids: [${subitemsBoardId}]) { columns { id title type } } }`
+            );
+            const subCols = subitemsRes.data?.boards?.[0]?.columns?.map((c) => ({
               value: c.id,
-              label: c.title
-            }));
-            setColumns(cols);
+              label: c.title,
+            })) || [];
+            setSubitemColumns(subCols);
+          } catch (err) {
+            console.error("No se pudieron cargar columnas de subitems:", err);
+            setSubitemColumns([]);
           }
         });
     }
@@ -212,6 +252,18 @@ const App = () => {
       console.error("No se pudo parsear el mapeo guardado:", err);
     }
   }, [mappingStorageKey]);
+
+  useEffect(() => {
+    if (activeSection !== "datos" && hasSavedFiscalData) {
+      setIsFiscalLocked(true);
+    }
+    if (activeSection !== "certificados" && hasSavedCertificates) {
+      setIsCertificatesLocked(true);
+    }
+    if (activeSection !== "mapping_v2" && mappingCompleted) {
+      setIsMappingLocked(true);
+    }
+  }, [activeSection, hasSavedFiscalData, hasSavedCertificates]);
 
   const handleFiscalChange = (field, value) => {
     setFiscal((prev) => ({ ...prev, [field]: value }));
@@ -357,7 +409,10 @@ const App = () => {
     });
   };
 
-  const renderVisualSelect = (fieldId, placeholderText) => (
+  const renderVisualSelect = (fieldId, placeholderText, scope = "board") => {
+    const options = scope === "subitem" ? subitemColumns : columns;
+
+    return (
     <select
       className={`invoice-preview-select ${isMappingLocked ? "disabled" : ""}`}
       value={mapping[fieldId] || ""}
@@ -366,9 +421,10 @@ const App = () => {
       disabled={isMappingLocked}
     >
       <option value="">⚙️ Map: {placeholderText}</option>
-      {columns.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+      {options.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
     </select>
-  );
+    );
+  };
 
   return (
     <div className="app-container">
@@ -446,14 +502,6 @@ const App = () => {
                 <><strong>Estado:</strong> Faltan completar datos fiscales para continuar.</>
               )}
             </div>
-
-            {hasSavedFiscalData && (
-              <div className="section-controls">
-                <button className="btn-secondary" onClick={() => setIsFiscalLocked((prev) => !prev)}>
-                  {isFiscalLocked ? "Modificar" : "Bloquear"}
-                </button>
-              </div>
-            )}
 
             <fieldset className={`section-fieldset ${isFiscalLocked ? "locked" : ""}`} disabled={isFiscalLocked}>
             <div className="form-grid">
@@ -533,7 +581,12 @@ const App = () => {
             </div>
 
             <div className="form-actions">
-              <button className="btn-primary" onClick={handleSaveFiscal} disabled={isLoading}>
+              {hasSavedFiscalData && (
+                <button className="btn-secondary" onClick={() => setIsFiscalLocked((prev) => !prev)}>
+                  {isFiscalLocked ? "Modificar" : "Bloquear"}
+                </button>
+              )}
+              <button className="btn-primary" onClick={handleSaveFiscal} disabled={isLoading || isFiscalLocked}>
                 {isLoading ? "Guardando..." : "Guardar Datos Fiscales"}
               </button>
             </div>
@@ -566,14 +619,6 @@ const App = () => {
                 <><strong>Estado:</strong> Todavía no hay certificados guardados para esta cuenta.</>
               )}
             </div>
-
-            {hasSavedCertificates && (
-              <div className="section-controls">
-                <button className="btn-secondary" onClick={() => setIsCertificatesLocked((prev) => !prev)}>
-                  {isCertificatesLocked ? "Modificar" : "Bloquear"}
-                </button>
-              </div>
-            )}
 
             <div className="cards-row">
               {/* Card CRT */}
@@ -644,6 +689,11 @@ const App = () => {
             </div>
 
             <div className="form-actions">
+                {hasSavedCertificates && (
+                  <button className="btn-secondary" onClick={() => setIsCertificatesLocked((prev) => !prev)}>
+                    {isCertificatesLocked ? "Modificar" : "Bloquear"}
+                  </button>
+                )}
               <button className="btn-primary" onClick={handleUploadCertificates} disabled={isLoading || !crtFile || !keyFile || isCertificatesLocked}>
                     {isLoading ? "Subiendo..." : "Guardar Certificados"}
                 </button>
@@ -678,12 +728,6 @@ const App = () => {
               ) : (
                 <><strong>Estado:</strong> Configurá el mapeo visual y guardalo para no repetirlo.</>
               )}
-            </div>
-
-            <div className="section-controls">
-              <button className="btn-secondary" onClick={() => setIsMappingLocked((prev) => !prev)}>
-                {isMappingLocked ? "Modificar" : "Bloquear"}
-              </button>
             </div>
 
             <div className="invoice-preview-wrapper">
@@ -739,10 +783,10 @@ const App = () => {
                         </thead>
                         <tbody>
                             <tr>
-                                <td className="text-left">{renderVisualSelect("concepto", "Concepto/Detalle")}</td>
-                                <td className="text-right">{renderVisualSelect("cantidad", "Cant.")}</td>
-                                <td className="text-right">{renderVisualSelect("precio_unitario", "Precio")}</td>
-                                <td className="text-right">{renderVisualSelect("subtotal", "Subtotal")}</td>
+                                <td className="text-left">{renderVisualSelect("concepto", "Concepto/Detalle", "subitem")}</td>
+                                <td className="text-right">{renderVisualSelect("cantidad", "Cant.", "subitem")}</td>
+                                <td className="text-right">{renderVisualSelect("precio_unitario", "Precio", "subitem")}</td>
+                                <td className="text-right">{renderVisualSelect("subtotal", "Subtotal", "subitem")}</td>
                             </tr>
                             <tr style={{height: "80px"}}>
                                 <td colSpan="4" style={{borderLeft: "none", borderRight: "none", borderBottom: "none"}}></td>
@@ -756,7 +800,7 @@ const App = () => {
                         <tbody>
                             <tr>
                                 <td className="label">Importe Total: $</td>
-                                <td className="value">{renderVisualSelect("subtotal", "Total Final")}</td>
+                                <td className="value">{renderVisualSelect("subtotal", "Total Final", "subitem")}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -766,6 +810,9 @@ const App = () => {
             </div>
 
             <div className="form-actions" style={{marginTop: "20px"}}>
+              <button className="btn-secondary" onClick={() => setIsMappingLocked((prev) => !prev)}>
+                {isMappingLocked ? "Modificar" : "Bloquear"}
+              </button>
               <button className="btn-primary" onClick={handleSaveVisualMapping} disabled={isMappingLocked}>
                 Guardar Mapeo Visual
               </button>
