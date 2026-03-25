@@ -81,6 +81,8 @@ const App = () => {
   const [columns, setColumns] = useState([]);
   const [subitemColumns, setSubitemColumns] = useState([]);
   const [mapping, setMapping] = useState({});
+  const requiredMappingFields = ["fecha_emision", "receptor_cuit", "concepto", "cantidad", "precio_unitario", "subtotal"];
+  const mappingCompleted = requiredMappingFields.every((field) => Boolean(mapping[field]));
 
   useEffect(() => {
     monday.get("context").then((res) => {
@@ -376,8 +378,6 @@ const App = () => {
 
   const fiscalStatus = hasSavedFiscalData || fiscalFormCompleted ? "complete" : "incomplete";
   const certificateStatus = hasSavedCertificates || (crtFile && keyFile) ? "complete" : "incomplete";
-  const requiredMappingFields = ["fecha_emision", "receptor_cuit", "concepto", "cantidad", "precio_unitario", "subtotal"];
-  const mappingCompleted = requiredMappingFields.every((field) => Boolean(mapping[field]));
   const mappingStatus = isMappingLocked || mappingCompleted ? "complete" : "incomplete";
 
   const sectionStatus = {
