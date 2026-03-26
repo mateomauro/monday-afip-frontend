@@ -11,7 +11,6 @@ const configuredApiUrl = (import.meta.env.VITE_BACKEND_URL || "").trim();
 const deprecatedBackendHost = "back-end-aplicacion-monday.netlify.app";
 const placeholderBackendHost = "TU-BACKEND-VERCEL.vercel.app";
 const defaultProductionApiUrl = "https://back-end-aplicacion-monday.vercel.app/api";
-const defaultMakeWebhookFacturaCUrl = (import.meta.env.VITE_MAKE_WEBHOOK_FACTURA_C_URL || "").trim();
 const API_URL = (
   configuredApiUrl &&
   !configuredApiUrl.includes(deprecatedBackendHost) &&
@@ -124,7 +123,6 @@ const App = () => {
   });
   const [emitForm, setEmitForm] = useState({
     itemId: "",
-    webhookUrl: defaultMakeWebhookFacturaCUrl,
   });
   const requiredMappingFields = ["fecha_emision", "receptor_cuit", "concepto", "cantidad", "precio_unitario"];
   const mappingCompleted = requiredMappingFields.every((field) => Boolean(mapping[field]));
@@ -635,10 +633,6 @@ const App = () => {
         item_id: emitForm.itemId.trim(),
       };
 
-      if (emitForm.webhookUrl?.trim()) {
-        payload.webhook_url = emitForm.webhookUrl.trim();
-      }
-
       const response = await axios.post(`${API_URL}/invoices/emit-c`, payload, {
         headers: authHeaders,
       });
@@ -646,17 +640,17 @@ const App = () => {
       setEmitFacturaCResult({
         ok: true,
         message: response.data?.message || "Disparo enviado correctamente",
-        detail: response.data?.make_body || "",
+        detail: response.data?.draft ? JSON.stringify(response.data.draft, null, 2) : "",
       });
 
       monday.execute("notice", {
-        message: "Disparo Factura C enviado a Make",
+        message: "Factura C preparada en backend",
         type: "success",
         duration: 4000,
       });
     } catch (err) {
       const errorMsg = err?.response?.data?.error || err?.message || "Error al emitir Factura C";
-      const errorDetail = err?.response?.data?.make_body || err?.response?.data?.details || "";
+      const errorDetail = err?.response?.data?.details || "";
 
       setEmitFacturaCResult({
         ok: false,
@@ -1311,7 +1305,7 @@ const App = () => {
             <div className="section-header">
               <h1 className="section-title">Emitir Facturas</h1>
               <p className="section-subtitle">
-                MVP inicial: disparo manual de Factura C vía webhook de Make.
+                MVP inicial: preparación de Factura C directamente desde backend.
               </p>
             </div>
 
@@ -1324,7 +1318,7 @@ const App = () => {
                 <span className="board-flow-pill error" role="listitem">{COMPROBANTE_STATUS_FLOW.error}</span>
               </div>
               <p className="board-setup-helper">
-                El escenario de Make debe recibir el item y gestionar estos estados en la columna configurada.
+                El backend toma el item + subitems y arma el borrador de Factura C para avanzar a autorización AFIP.
               </p>
             </div>
 
@@ -1347,16 +1341,6 @@ const App = () => {
                   />
                 </div>
 
-                <div className="form-group full-width">
-                  <label className="form-label">Webhook Make (opcional si está en backend)</label>
-                  <input
-                    className="form-input"
-                    type="text"
-                    placeholder="https://hook.us2.make.com/..."
-                    value={emitForm.webhookUrl}
-                    onChange={(e) => setEmitForm((prev) => ({ ...prev, webhookUrl: e.target.value }))}
-                  />
-                </div>
               </div>
 
               <div className="form-actions">
@@ -1365,7 +1349,7 @@ const App = () => {
                   onClick={handleEmitFacturaC}
                   disabled={isEmittingFacturaC || !boardId}
                 >
-                  {isEmittingFacturaC ? "Enviando a Make..." : "Emitir Factura C"}
+                  {isEmittingFacturaC ? "Preparando en backend..." : "Preparar Factura C"}
                 </button>
               </div>
 
