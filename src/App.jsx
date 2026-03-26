@@ -32,6 +32,9 @@ const IconList = () => (
 const IconFile = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
 );
+const IconSettings = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+);
 const IconUpload = () => (
   <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#0073ea" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
 );
@@ -43,7 +46,17 @@ const MENU_ITEMS = [
   { id: "datos", label: "Datos Fiscales", icon: <IconBuilding /> },
   { id: "certificados", label: "Certificados AFIP", icon: <IconCert /> },
   { id: "mapping_v2", label: "Mapeo Visual (Nuevo)", icon: <IconList /> },
+  { id: "board_setup", label: "Configurar Tablero", icon: <IconSettings /> },
   { id: "invoices", label: "Emitir Facturas", icon: <IconFile /> },
+];
+
+const BOARD_REQUIRED_COLUMNS = [
+  { key: "client_document", label: "Documento Cliente", aliases: ["documento cliente", "documento", "nro documento", "numero documento"], acceptedTypes: ["text", "numbers"] },
+  { key: "client_document_type", label: "Tipo Documento", aliases: ["tipo documento", "tipo doc"], acceptedTypes: ["status", "dropdown", "color"] },
+  { key: "concept", label: "Concepto", aliases: ["concepto", "detalle", "descripcion"], acceptedTypes: ["text", "long-text"] },
+  { key: "quantity", label: "Cantidad", aliases: ["cantidad", "cant"], acceptedTypes: ["numbers"] },
+  { key: "unit_price", label: "Precio Unitario", aliases: ["precio unitario", "precio", "importe unitario"], acceptedTypes: ["numbers", "numeric", "money"] },
+  { key: "billing_status", label: "Estado Facturación", aliases: ["estado facturacion", "estado factura", "facturacion"], acceptedTypes: ["status", "color", "dropdown"] }
 ];
 
 const IVA_OPTIONS = [
@@ -63,6 +76,7 @@ const App = () => {
   const [isFiscalLocked, setIsFiscalLocked] = useState(false);
   const [isCertificatesLocked, setIsCertificatesLocked] = useState(false);
   const [isMappingLocked, setIsMappingLocked] = useState(false);
+  const [isSavingBoardConfig, setIsSavingBoardConfig] = useState(false);
 
   // Certificados
   const [crtFile, setCrtFile] = useState(null);
@@ -85,9 +99,58 @@ const App = () => {
   const [columns, setColumns] = useState([]);
   const [subitemColumns, setSubitemColumns] = useState([]);
   const [mapping, setMapping] = useState({});
+  const [boardConfig, setBoardConfig] = useState({
+    status_column_id: "",
+    trigger_label: "Crear Factura",
+    success_label: "Emitida",
+    error_label: "Error",
+  });
   const requiredMappingFields = ["fecha_emision", "receptor_cuit", "concepto", "cantidad", "precio_unitario"];
   const mappingCompleted = requiredMappingFields.every((field) => Boolean(mapping[field]));
   const mappedRequiredCount = requiredMappingFields.filter((field) => Boolean(mapping[field])).length;
+
+  const normalizeText = (value) =>
+    (value || "")
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const statusColumns = columns.filter((column) =>
+    ["status", "color", "dropdown"].includes(column.type)
+  );
+
+  const requiredBoardColumnsStatus = BOARD_REQUIRED_COLUMNS.map((requiredColumn) => {
+    const foundColumn = columns.find((column) => {
+      const normalizedTitle = normalizeText(column.label);
+      const matchesAlias = requiredColumn.aliases.some((alias) =>
+        normalizedTitle.includes(normalizeText(alias))
+      );
+      if (!matchesAlias) return false;
+      return requiredColumn.acceptedTypes.includes(column.type);
+    });
+
+    const foundWithAnyType = columns.find((column) => {
+      const normalizedTitle = normalizeText(column.label);
+      return requiredColumn.aliases.some((alias) =>
+        normalizedTitle.includes(normalizeText(alias))
+      );
+    });
+
+    if (foundColumn) {
+      return { ...requiredColumn, status: "ok", foundColumn };
+    }
+
+    if (foundWithAnyType) {
+      return { ...requiredColumn, status: "wrong_type", foundColumn: foundWithAnyType };
+    }
+
+    return { ...requiredColumn, status: "missing", foundColumn: null };
+  });
+
+  const allRequiredBoardColumnsReady = requiredBoardColumnsStatus.every((column) => column.status === "ok");
+  const hasAutomationConfig = Boolean(boardConfig.status_column_id) && Boolean(boardConfig.trigger_label?.trim()) && Boolean(boardConfig.success_label?.trim()) && Boolean(boardConfig.error_label?.trim());
 
   useEffect(() => {
     monday.get("context").then((res) => {
@@ -145,6 +208,7 @@ const App = () => {
           const cols = boardColumns.map((c) => ({
             value: c.id,
             label: c.title,
+            type: c.type,
           }));
           setColumns(cols);
 
@@ -180,6 +244,7 @@ const App = () => {
                 .map((c) => ({
                   value: c.id,
                   label: c.id === "name" ? "Nombre del subitem" : c.title,
+                  type: c.type,
                 })) || [];
             setSubitemColumns(subCols);
           } catch (err) {
@@ -237,6 +302,15 @@ const App = () => {
           setMapping({});
           setIsMappingLocked(false);
         }
+
+        if (data?.boardConfig && typeof data.boardConfig === "object") {
+          setBoardConfig({
+            status_column_id: data.boardConfig.status_column_id || "",
+            trigger_label: data.boardConfig.trigger_label || "Crear Factura",
+            success_label: data.boardConfig.success_label || "Emitida",
+            error_label: data.boardConfig.error_label || "Error",
+          });
+        }
       } catch (err) {
         console.error("No se pudieron recuperar datos guardados:", err);
         setApiStatus("error");
@@ -248,6 +322,15 @@ const App = () => {
 
     fetchSavedSetup();
   }, [context, boardId, viewIdFromHref, appFeatureId]);
+
+  useEffect(() => {
+    if (boardConfig.status_column_id || statusColumns.length === 0) return;
+
+    setBoardConfig((prev) => ({
+      ...prev,
+      status_column_id: statusColumns[0].value,
+    }));
+  }, [boardConfig.status_column_id, statusColumns]);
 
   useEffect(() => {
     if (activeSection !== "datos" && hasSavedFiscalData) {
@@ -370,11 +453,14 @@ const App = () => {
   const fiscalStatus = hasSavedFiscalData || fiscalFormCompleted ? "complete" : "incomplete";
   const certificateStatus = hasSavedCertificates || (crtFile && keyFile) ? "complete" : "incomplete";
   const mappingStatus = isMappingLocked || mappingCompleted ? "complete" : "incomplete";
+  const boardSetupReady = hasSavedFiscalData && hasSavedCertificates && mappingCompleted && allRequiredBoardColumnsReady && hasAutomationConfig;
+  const boardSetupStatus = boardSetupReady ? "complete" : "incomplete";
 
   const sectionStatus = {
     datos: fiscalStatus,
     certificados: certificateStatus,
     mapping_v2: mappingStatus,
+    board_setup: boardSetupStatus,
   };
 
   const getStatusLabel = (status) => {
@@ -421,6 +507,61 @@ const App = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleSaveBoardConfig = async () => {
+    if (!context?.account?.id || !boardId) {
+      alert("No se pudo identificar cuenta/tablero para guardar la configuración.");
+      return;
+    }
+
+    if (!allRequiredBoardColumnsReady) {
+      alert("Faltan columnas requeridas o hay columnas con tipo incompatible.");
+      return;
+    }
+
+    if (!boardConfig.status_column_id) {
+      alert("Seleccioná la columna de estado que disparará la emisión.");
+      return;
+    }
+
+    setIsSavingBoardConfig(true);
+    try {
+      await axios.post(`${API_URL}/board-config`, {
+        monday_account_id: context.account.id.toString(),
+        board_id: boardId,
+        view_id: viewIdFromHref,
+        app_feature_id: appFeatureId,
+        status_column_id: boardConfig.status_column_id,
+        trigger_label: boardConfig.trigger_label,
+        success_label: boardConfig.success_label,
+        error_label: boardConfig.error_label,
+        required_columns: requiredBoardColumnsStatus.map((column) => ({
+          key: column.key,
+          expected_label: column.label,
+          resolved_column_id: column.foundColumn?.value || null,
+          resolved_column_title: column.foundColumn?.label || null,
+          resolved_column_type: column.foundColumn?.type || null,
+          status: column.status,
+        })),
+      });
+
+      monday.execute("notice", {
+        message: "Configuración de tablero guardada",
+        type: "success",
+        duration: 4000,
+      });
+    } catch (err) {
+      const errorMsg = err?.response?.data?.error || err?.message || "Error al guardar configuración de tablero";
+      alert(errorMsg);
+      monday.execute("notice", {
+        message: errorMsg,
+        type: "error",
+        duration: 4000,
+      });
+    } finally {
+      setIsSavingBoardConfig(false);
     }
   };
 
@@ -845,6 +986,124 @@ const App = () => {
               <button className="btn-primary" onClick={handleSaveVisualMapping} disabled={isMappingLocked}>
                 Guardar Mapeo Visual
               </button>
+            </div>
+          </section>
+        )}
+
+        {/* ═══ SECCIÓN: CONFIGURACIÓN DE TABLERO ═══ */}
+        {activeSection === "board_setup" && (
+          <section className="section board-setup-section">
+            <div className="section-header">
+              <h1 className="section-title">Configuración de Tablero</h1>
+              <p className="section-subtitle">
+                Verificá la estructura mínima del tablero para habilitar emisión automática sin errores.
+              </p>
+            </div>
+
+            <div className={`section-status-banner ${boardSetupStatus}`}>
+              {boardSetupReady ? (
+                <><strong>Estado:</strong> Tablero listo para emisión automática.</>
+              ) : (
+                <><strong>Estado:</strong> Faltan pasos de configuración para habilitar emisión automática.</>
+              )}
+            </div>
+
+            <div className="board-setup-card">
+              <h3 className="board-setup-card-title">Checklist de configuración</h3>
+              <ul className="board-setup-checklist">
+                <li className={hasSavedFiscalData ? "ok" : "pending"}>Datos fiscales guardados</li>
+                <li className={hasSavedCertificates ? "ok" : "pending"}>Certificados AFIP guardados</li>
+                <li className={mappingCompleted ? "ok" : "pending"}>Mapeo visual obligatorio completo</li>
+                <li className={allRequiredBoardColumnsReady ? "ok" : "pending"}>Columnas mínimas detectadas correctamente</li>
+                <li className={hasAutomationConfig ? "ok" : "pending"}>Reglas de automatización cargadas</li>
+              </ul>
+            </div>
+
+            <div className="board-setup-card">
+              <h3 className="board-setup-card-title">Columnas recomendadas</h3>
+              <div className="board-columns-table-wrapper">
+                <table className="board-columns-table">
+                  <thead>
+                    <tr>
+                      <th>Columna requerida</th>
+                      <th>Estado</th>
+                      <th>Columna detectada</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {requiredBoardColumnsStatus.map((column) => (
+                      <tr key={column.key}>
+                        <td>{column.label}</td>
+                        <td>
+                          {column.status === "ok" && <span className="table-status ok">OK</span>}
+                          {column.status === "missing" && <span className="table-status missing">Falta</span>}
+                          {column.status === "wrong_type" && <span className="table-status wrong-type">Tipo incompatible</span>}
+                        </td>
+                        <td>{column.foundColumn ? `${column.foundColumn.label} (${column.foundColumn.type})` : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="board-setup-card">
+              <h3 className="board-setup-card-title">Reglas de automatización</h3>
+              <div className="form-grid board-config-grid">
+                <div className="form-group full-width">
+                  <label className="form-label">Columna de estado que dispara emisión</label>
+                  <select
+                    className="form-input"
+                    value={boardConfig.status_column_id}
+                    onChange={(e) => setBoardConfig((prev) => ({ ...prev, status_column_id: e.target.value }))}
+                  >
+                    <option value="">Seleccionar columna de estado</option>
+                    {statusColumns.map((column) => (
+                      <option key={column.value} value={column.value}>{column.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Valor disparador</label>
+                  <input
+                    className="form-input"
+                    type="text"
+                    value={boardConfig.trigger_label}
+                    onChange={(e) => setBoardConfig((prev) => ({ ...prev, trigger_label: e.target.value }))}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Valor de éxito</label>
+                  <input
+                    className="form-input"
+                    type="text"
+                    value={boardConfig.success_label}
+                    onChange={(e) => setBoardConfig((prev) => ({ ...prev, success_label: e.target.value }))}
+                  />
+                </div>
+
+                <div className="form-group full-width">
+                  <label className="form-label">Valor de error</label>
+                  <input
+                    className="form-input"
+                    type="text"
+                    value={boardConfig.error_label}
+                    onChange={(e) => setBoardConfig((prev) => ({ ...prev, error_label: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="form-actions">
+                <button
+                  className="btn-primary"
+                  onClick={handleSaveBoardConfig}
+                  disabled={isSavingBoardConfig || !allRequiredBoardColumnsReady}
+                >
+                  {isSavingBoardConfig ? "Guardando..." : "Guardar Configuración"}
+                </button>
+              </div>
             </div>
           </section>
         )}
