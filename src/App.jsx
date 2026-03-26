@@ -50,13 +50,16 @@ const MENU_ITEMS = [
   { id: "invoices", label: "Emitir Facturas", icon: <IconFile /> },
 ];
 
-const BOARD_REQUIRED_COLUMNS = [
+const BOARD_ITEM_REQUIRED_COLUMNS = [
   { key: "client_document", label: "Documento Cliente", aliases: ["documento cliente", "documento", "nro documento", "numero documento"], acceptedTypes: ["text", "numbers"] },
   { key: "client_document_type", label: "Tipo Documento", aliases: ["tipo documento", "tipo doc"], acceptedTypes: ["status", "dropdown", "color"] },
-  { key: "concept", label: "Concepto", aliases: ["concepto", "detalle", "descripcion"], acceptedTypes: ["text", "long-text"] },
-  { key: "quantity", label: "Cantidad", aliases: ["cantidad", "cant"], acceptedTypes: ["numbers"] },
-  { key: "unit_price", label: "Precio Unitario", aliases: ["precio unitario", "precio", "importe unitario"], acceptedTypes: ["numbers", "numeric", "money"] },
   { key: "billing_status", label: "Estado Facturación", aliases: ["estado facturacion", "estado factura", "facturacion"], acceptedTypes: ["status", "color", "dropdown"] }
+];
+
+const BOARD_SUBITEM_REQUIRED_COLUMNS = [
+  { key: "concept", label: "Concepto (línea)", aliases: ["concepto", "detalle", "descripcion", "producto", "servicio", "nombre"], acceptedTypes: ["text", "long-text", "name"] },
+  { key: "quantity", label: "Cantidad (línea)", aliases: ["cantidad", "cant"], acceptedTypes: ["numbers"] },
+  { key: "unit_price", label: "Precio Unitario (línea)", aliases: ["precio unitario", "precio", "importe unitario"], acceptedTypes: ["numbers", "numeric", "money"] }
 ];
 
 const IVA_OPTIONS = [
@@ -78,6 +81,7 @@ const App = () => {
   const [isCertificatesLocked, setIsCertificatesLocked] = useState(false);
   const [isMappingLocked, setIsMappingLocked] = useState(false);
   const [isSavingBoardConfig, setIsSavingBoardConfig] = useState(false);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
 
   // Certificados
   const [crtFile, setCrtFile] = useState(null);
@@ -122,8 +126,8 @@ const App = () => {
     ["status", "color", "dropdown"].includes(column.type)
   );
 
-  const requiredBoardColumnsStatus = BOARD_REQUIRED_COLUMNS.map((requiredColumn) => {
-    const foundColumn = columns.find((column) => {
+  const getRequiredColumnsStatus = (requiredColumns, availableColumns) => requiredColumns.map((requiredColumn) => {
+    const foundColumn = availableColumns.find((column) => {
       const normalizedTitle = normalizeText(column.label);
       const matchesAlias = requiredColumn.aliases.some((alias) =>
         normalizedTitle.includes(normalizeText(alias))
@@ -132,7 +136,7 @@ const App = () => {
       return requiredColumn.acceptedTypes.includes(column.type);
     });
 
-    const foundWithAnyType = columns.find((column) => {
+    const foundWithAnyType = availableColumns.find((column) => {
       const normalizedTitle = normalizeText(column.label);
       return requiredColumn.aliases.some((alias) =>
         normalizedTitle.includes(normalizeText(alias))
@@ -150,7 +154,15 @@ const App = () => {
     return { ...requiredColumn, status: "missing", foundColumn: null };
   });
 
-  const allRequiredBoardColumnsReady = requiredBoardColumnsStatus.every((column) => column.status === "ok");
+  const requiredItemColumnsStatus = getRequiredColumnsStatus(BOARD_ITEM_REQUIRED_COLUMNS, columns);
+  const requiredSubitemColumnsStatus = getRequiredColumnsStatus(BOARD_SUBITEM_REQUIRED_COLUMNS, subitemColumns);
+  const requiredBoardColumnsStatus = [...requiredItemColumnsStatus, ...requiredSubitemColumnsStatus];
+  const hasSubitemsColumnInBoard = columns.some((column) => column.type === "subtasks");
+  const hasSubitemsStructureReady = hasSubitemsColumnInBoard && subitemColumns.length > 0;
+
+  const allRequiredItemColumnsReady = requiredItemColumnsStatus.every((column) => column.status === "ok");
+  const allRequiredSubitemColumnsReady = requiredSubitemColumnsStatus.every((column) => column.status === "ok");
+  const allRequiredBoardColumnsReady = allRequiredItemColumnsReady && allRequiredSubitemColumnsReady;
   const hasAutomationConfig = Boolean(boardConfig.status_column_id) && Boolean(boardConfig.trigger_label?.trim()) && Boolean(boardConfig.success_label?.trim()) && Boolean(boardConfig.error_label?.trim());
 
   useEffect(() => {
@@ -551,6 +563,7 @@ const App = () => {
         required_columns: requiredBoardColumnsStatus.map((column) => ({
           key: column.key,
           expected_label: column.label,
+          scope: BOARD_ITEM_REQUIRED_COLUMNS.some((itemColumn) => itemColumn.key === column.key) ? "item" : "subitem",
           resolved_column_id: column.foundColumn?.value || null,
           resolved_column_title: column.foundColumn?.label || null,
           resolved_column_type: column.foundColumn?.type || null,
@@ -1019,19 +1032,41 @@ const App = () => {
               )}
             </div>
 
+            <div className="board-setup-card board-guide-card">
+              <div className="board-guide-header">
+                <h3 className="board-setup-card-title">Guía rápida de configuración</h3>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setIsGuideModalOpen(true)}
+                >
+                  Abrir tutorial
+                </button>
+              </div>
+              <ol className="board-guide-list">
+                <li>Completá Datos Fiscales y Certificados AFIP.</li>
+                <li>En el tablero principal, creá o verificá la columna de subítems.</li>
+                <li>En cada subítem (línea de factura), asegurate de tener Concepto, Cantidad y Precio Unitario.</li>
+                <li>Volvé al Mapeo Visual y asigná columnas de cabecera (ítem) y líneas (subítem).</li>
+                <li>Guardá esta configuración para activar la emisión automática.</li>
+              </ol>
+            </div>
+
             <div className="board-setup-card">
               <h3 className="board-setup-card-title">Checklist de configuración</h3>
               <ul className="board-setup-checklist">
                 <li className={hasSavedFiscalData ? "ok" : "pending"}>Datos fiscales guardados</li>
                 <li className={hasSavedCertificates ? "ok" : "pending"}>Certificados AFIP guardados</li>
                 <li className={mappingCompleted ? "ok" : "pending"}>Mapeo visual obligatorio completo</li>
-                <li className={allRequiredBoardColumnsReady ? "ok" : "pending"}>Columnas mínimas detectadas correctamente</li>
+                <li className={hasSubitemsStructureReady ? "ok" : "pending"}>Estructura de subítems disponible para líneas</li>
+                <li className={allRequiredItemColumnsReady ? "ok" : "pending"}>Columnas de ítem (cabecera) detectadas</li>
+                <li className={allRequiredSubitemColumnsReady ? "ok" : "pending"}>Columnas de subítem (líneas) detectadas</li>
                 <li className={hasAutomationConfig ? "ok" : "pending"}>Reglas de automatización cargadas</li>
               </ul>
             </div>
 
             <div className="board-setup-card">
-              <h3 className="board-setup-card-title">Columnas recomendadas</h3>
+              <h3 className="board-setup-card-title">Columnas a nivel ítem (cabecera)</h3>
               <div className="board-columns-table-wrapper">
                 <table className="board-columns-table">
                   <thead>
@@ -1042,7 +1077,48 @@ const App = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {requiredBoardColumnsStatus.map((column) => (
+                    {requiredItemColumnsStatus.map((column) => (
+                      <tr key={column.key}>
+                        <td>{column.label}</td>
+                        <td>
+                          {column.status === "ok" && <span className="table-status ok">OK</span>}
+                          {column.status === "missing" && <span className="table-status missing">Falta</span>}
+                          {column.status === "wrong_type" && <span className="table-status wrong-type">Tipo incompatible</span>}
+                        </td>
+                        <td>{column.foundColumn ? `${column.foundColumn.label} (${column.foundColumn.type})` : "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="board-setup-card">
+              <h3 className="board-setup-card-title">Columnas a nivel subítem (líneas de factura)</h3>
+              <p className="board-setup-helper">
+                Estas columnas viven en el board de subítems y representan cada línea de la factura.
+              </p>
+              {!hasSubitemsColumnInBoard && (
+                <div className="board-setup-inline-warning">
+                  No se detecta columna de subítems en este tablero. Agregá subítems en monday para poder mapear líneas de factura.
+                </div>
+              )}
+              {hasSubitemsColumnInBoard && !hasSubitemsStructureReady && (
+                <div className="board-setup-inline-warning">
+                  Se detectó la columna de subítems, pero aún no se pudieron leer sus columnas internas. Creá al menos un subítem y recargá.
+                </div>
+              )}
+              <div className="board-columns-table-wrapper">
+                <table className="board-columns-table">
+                  <thead>
+                    <tr>
+                      <th>Columna requerida</th>
+                      <th>Estado</th>
+                      <th>Columna detectada</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {requiredSubitemColumnsStatus.map((column) => (
                       <tr key={column.key}>
                         <td>{column.label}</td>
                         <td>
@@ -1116,6 +1192,52 @@ const App = () => {
                 </button>
               </div>
             </div>
+
+            {isGuideModalOpen && (
+              <div className="setup-guide-modal-overlay" role="dialog" aria-modal="true" aria-label="Tutorial configuración de tablero">
+                <div className="setup-guide-modal">
+                  <div className="setup-guide-modal-header">
+                    <h3>Tutorial: configurar tablero en 2 niveles</h3>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      onClick={() => setIsGuideModalOpen(false)}
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+
+                  <div className="setup-guide-modal-body">
+                    <p>
+                      Este flujo separa la factura en dos partes: ítem (cabecera) y subítem (líneas de detalle).
+                    </p>
+
+                    <h4>1) Configuración a nivel ítem (cabecera)</h4>
+                    <ul>
+                      <li>Documento Cliente</li>
+                      <li>Tipo Documento</li>
+                      <li>Estado Facturación (trigger de automatización)</li>
+                    </ul>
+
+                    <h4>2) Configuración a nivel subítem (líneas)</h4>
+                    <ul>
+                      <li>Concepto o descripción del producto/servicio</li>
+                      <li>Cantidad</li>
+                      <li>Precio Unitario</li>
+                    </ul>
+
+                    <h4>3) Checklist recomendado</h4>
+                    <ol>
+                      <li>Crear al menos un subítem de prueba en monday.</li>
+                      <li>Volver a esta sección y validar que aparezcan columnas de subítem.</li>
+                      <li>Completar Mapeo Visual.</li>
+                      <li>Definir regla de automatización por estado.</li>
+                      <li>Guardar configuración.</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            )}
           </section>
         )}
 
