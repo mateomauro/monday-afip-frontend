@@ -89,6 +89,9 @@ const App = () => {
   const [isCertificatesLocked, setIsCertificatesLocked] = useState(false);
   const [isMappingLocked, setIsMappingLocked] = useState(false);
   const [isSavingBoardConfig, setIsSavingBoardConfig] = useState(false);
+  const [isSavingUserApiToken, setIsSavingUserApiToken] = useState(false);
+  const [userApiToken, setUserApiToken] = useState("");
+  const [hasSavedUserApiToken, setHasSavedUserApiToken] = useState(false);
   const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
   const [isEmittingFacturaC, setIsEmittingFacturaC] = useState(false);
   const [emitFacturaCResult, setEmitFacturaCResult] = useState(null);
@@ -349,6 +352,16 @@ const App = () => {
             success_label: COMPROBANTE_STATUS_FLOW.success,
             error_label: COMPROBANTE_STATUS_FLOW.error,
           });
+        }
+
+        try {
+          const tokenResponse = await axios.get(`${API_URL}/user-api-token/${context.account.id}`, {
+            headers: authHeaders,
+          });
+          setHasSavedUserApiToken(Boolean(tokenResponse?.data?.has_token));
+        } catch (tokenErr) {
+          console.error("No se pudo consultar estado de token de usuario:", tokenErr);
+          setHasSavedUserApiToken(false);
         }
       } catch (err) {
         console.error("No se pudieron recuperar datos guardados:", err);
@@ -613,6 +626,44 @@ const App = () => {
     }
   };
 
+  const handleSaveUserApiToken = async () => {
+    if (!context?.account?.id) {
+      alert("No se pudo identificar la cuenta de monday para guardar token.");
+      return;
+    }
+
+    if (!userApiToken.trim()) {
+      alert("Ingresá un token antes de guardar.");
+      return;
+    }
+
+    setIsSavingUserApiToken(true);
+    try {
+      await axios.post(`${API_URL}/user-api-token`, {
+        monday_account_id: context.account.id.toString(),
+        api_token: userApiToken.trim(),
+      }, { headers: authHeaders });
+
+      setHasSavedUserApiToken(true);
+      setUserApiToken("");
+      monday.execute("notice", {
+        message: "Token de usuario guardado correctamente",
+        type: "success",
+        duration: 4000,
+      });
+    } catch (err) {
+      const errorMsg = err?.response?.data?.error || err?.message || "Error al guardar token";
+      alert(errorMsg);
+      monday.execute("notice", {
+        message: errorMsg,
+        type: "error",
+        duration: 4000,
+      });
+    } finally {
+      setIsSavingUserApiToken(false);
+    }
+  };
+
   const updateItemStatusInMonday = async (itemId, statusLabel) => {
     if (!boardConfig.status_column_id || !boardId || !itemId) return;
 
@@ -733,6 +784,7 @@ const App = () => {
           draft: response.data?.draft || null,
           afip_result: response.data?.afip_result || null,
           pdf_generado: Boolean(response.data?.pdf_base64),
+          monday_upload: response.data?.monday_upload || null,
         }, null, 2),
       });
 
@@ -1363,6 +1415,39 @@ const App = () => {
                   disabled={isSavingBoardConfig || !allRequiredBoardColumnsReady}
                 >
                   {isSavingBoardConfig ? "Guardando..." : "Guardar Configuración"}
+                </button>
+              </div>
+            </div>
+
+            <div className="board-setup-card">
+              <h3 className="board-setup-card-title">Token API de usuario (para subir PDF automático)</h3>
+              <p className="board-setup-helper">
+                Guardá tu token personal de monday para que el backend pueda adjuntar el PDF en la columna <strong>Comprobante PDF</strong> sin configurar variables por cliente.
+              </p>
+              <div className={`section-status-banner ${hasSavedUserApiToken ? "complete" : "incomplete"}`} style={{ marginBottom: "12px" }}>
+                {hasSavedUserApiToken
+                  ? <><strong>Estado:</strong> Ya hay un token guardado para este usuario.</>
+                  : <><strong>Estado:</strong> Falta guardar token para habilitar subida automática del PDF.</>}
+              </div>
+              <div className="form-grid board-config-grid">
+                <div className="form-group full-width">
+                  <label className="form-label">Token API de monday</label>
+                  <input
+                    className="form-input"
+                    type="password"
+                    placeholder="Ej: eyJ..."
+                    value={userApiToken}
+                    onChange={(e) => setUserApiToken(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="form-actions">
+                <button
+                  className="btn-primary"
+                  onClick={handleSaveUserApiToken}
+                  disabled={isSavingUserApiToken || !userApiToken.trim()}
+                >
+                  {isSavingUserApiToken ? "Guardando token..." : "Guardar Token API"}
                 </button>
               </div>
             </div>
