@@ -9,10 +9,14 @@ const monday = mondaySdk();
 // Usamos variable de entorno para la URL del Backend separado
 const configuredApiUrl = (import.meta.env.VITE_BACKEND_URL || "").trim();
 const deprecatedBackendHost = "back-end-aplicacion-monday.netlify.app";
+const placeholderBackendHost = "TU-BACKEND-VERCEL.vercel.app";
+const defaultProductionApiUrl = "https://back-end-aplicacion-monday.vercel.app/api";
 const API_URL = (
-  configuredApiUrl && !configuredApiUrl.includes(deprecatedBackendHost)
+  configuredApiUrl &&
+  !configuredApiUrl.includes(deprecatedBackendHost) &&
+  !configuredApiUrl.includes(placeholderBackendHost)
     ? configuredApiUrl
-    : "https://facturacion-back-end.netlify.app/api"
+    : defaultProductionApiUrl
 ).replace(/\/$/, "");
 
 /* ─── Iconos SVG inline ─── */
@@ -81,8 +85,9 @@ const App = () => {
   const [columns, setColumns] = useState([]);
   const [subitemColumns, setSubitemColumns] = useState([]);
   const [mapping, setMapping] = useState({});
-  const requiredMappingFields = ["fecha_emision", "receptor_cuit", "concepto", "cantidad", "precio_unitario", "subtotal"];
+  const requiredMappingFields = ["fecha_emision", "receptor_cuit", "concepto", "cantidad", "precio_unitario"];
   const mappingCompleted = requiredMappingFields.every((field) => Boolean(mapping[field]));
+  const mappedRequiredCount = requiredMappingFields.filter((field) => Boolean(mapping[field])).length;
 
   useEffect(() => {
     monday.get("context").then((res) => {
@@ -176,10 +181,9 @@ const App = () => {
             );
             const subCols =
               subitemsRes.data?.boards?.[0]?.columns
-                ?.filter((c) => c.id !== "name")
                 .map((c) => ({
                   value: c.id,
-                  label: c.title,
+                  label: c.id === "name" ? "Nombre del subitem" : c.title,
                 })) || [];
             setSubitemColumns(subCols);
           } catch (err) {
@@ -414,16 +418,17 @@ const App = () => {
 
   const renderVisualSelect = (fieldId, placeholderText, scope = "board") => {
     const options = scope === "subitem" ? subitemColumns : columns;
+    const hasValue = Boolean(mapping[fieldId]);
 
     return (
     <select
-      className={`invoice-preview-select ${isMappingLocked ? "disabled" : ""}`}
+      className={`invoice-preview-select ${hasValue ? "mapped" : "unmapped"} ${isMappingLocked ? "disabled" : ""}`}
       value={mapping[fieldId] || ""}
       onChange={e => setMapping({...mapping, [fieldId]: e.target.value})}
       title={placeholderText}
       disabled={isMappingLocked}
     >
-      <option value="">⚙️ Map: {placeholderText}</option>
+      <option value="">Seleccionar: {placeholderText}</option>
       {options.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
     </select>
     );
@@ -735,9 +740,9 @@ const App = () => {
 
             <div className={`section-status-banner ${mappingStatus}`}>
               {isMappingLocked ? (
-                <><strong>Estado:</strong> Mapeo visual guardado y bloqueado para evitar cambios accidentales.</>
+                <><strong>Estado:</strong> Mapeo visual guardado y bloqueado para evitar cambios accidentales. Campos obligatorios mapeados: {mappedRequiredCount}/{requiredMappingFields.length}.</>
               ) : (
-                <><strong>Estado:</strong> Configurá el mapeo visual y guardalo para no repetirlo.</>
+                <><strong>Estado:</strong> Configurá el mapeo visual y guardalo para no repetirlo. Campos obligatorios mapeados: {mappedRequiredCount}/{requiredMappingFields.length}.</>
               )}
             </div>
 
@@ -772,13 +777,13 @@ const App = () => {
                 </div>
 
                 <div className="info-row">
-                    <div style={{display: "flex", marginBottom: "4px"}}>
-                        <div style={{width: "42%"}}><span className="label">CUIT:</span> {renderVisualSelect("receptor_cuit", "CUIT")}</div>
-                        <div style={{flex: 1}}><span className="label">Razón Social:</span> Dato fijo (no mapeable)</div>
+                  <div className="info-line">
+                    <div className="info-col-left"><span className="label">CUIT:</span> {renderVisualSelect("receptor_cuit", "CUIT")}</div>
+                    <div className="info-col-right"><span className="label">Razón Social:</span> Dato fijo (no mapeable)</div>
                     </div>
-                    <div style={{display: "flex", marginBottom: "4px"}}>
-                        <div style={{width: "42%"}}><span className="label">Condición IVA:</span> Dato fijo (no mapeable)</div>
-                        <div style={{flex: 1}}><span className="label">Domicilio:</span> Dato fijo (no mapeable)</div>
+                  <div className="info-line">
+                    <div className="info-col-left"><span className="label">Condición IVA:</span> Dato fijo (no mapeable)</div>
+                    <div className="info-col-right"><span className="label">Domicilio:</span> Dato fijo (no mapeable)</div>
                     </div>
                 </div>
 
@@ -797,7 +802,7 @@ const App = () => {
                                 <td className="text-left">{renderVisualSelect("concepto", "Concepto/Detalle", "subitem")}</td>
                                 <td className="text-right">{renderVisualSelect("cantidad", "Cant.", "subitem")}</td>
                                 <td className="text-right">{renderVisualSelect("precio_unitario", "Precio", "subitem")}</td>
-                                <td className="text-right">{renderVisualSelect("subtotal", "Subtotal", "subitem")}</td>
+                              <td className="text-right">Calculado automaticamente: Cantidad x Precio Unit.</td>
                             </tr>
                             <tr style={{height: "80px"}}>
                                 <td colSpan="4" style={{borderLeft: "none", borderRight: "none", borderBottom: "none"}}></td>
@@ -814,7 +819,7 @@ const App = () => {
                                 <td className="value">
                                   Calculado automaticamente
                                   <div style={{ fontSize: "10px", marginTop: "2px" }}>
-                                    Usa la suma de "{getMappedColumnLabel("subtotal", "subitem")}".
+                                    Usa la suma de "Cantidad x Precio Unit." por cada subitem.
                                   </div>
                                 </td>
                             </tr>
