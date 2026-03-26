@@ -660,6 +660,7 @@ const App = () => {
         monday_account_id: context.account.id.toString(),
         board_id: boardId,
         item_id: emitForm.itemId.trim(),
+        issue_in_afip: true,
         item_snapshot: {
           id: mondayItem.id,
           name: mondayItem.name,
@@ -678,12 +679,15 @@ const App = () => {
 
       setEmitFacturaCResult({
         ok: true,
-        message: response.data?.message || "Disparo enviado correctamente",
-        detail: response.data?.draft ? JSON.stringify(response.data.draft, null, 2) : "",
+        message: response.data?.message || "Factura C procesada",
+        detail: JSON.stringify({
+          draft: response.data?.draft || null,
+          afip_result: response.data?.afip_result || null,
+        }, null, 2),
       });
 
       monday.execute("notice", {
-        message: "Factura C preparada en backend",
+        message: response.data?.afip_result?.cae ? "Factura C emitida en AFIP" : "Factura C procesada en backend",
         type: "success",
         duration: 4000,
       });
