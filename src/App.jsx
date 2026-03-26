@@ -627,10 +627,49 @@ const App = () => {
     setIsEmittingFacturaC(true);
     setEmitFacturaCResult(null);
     try {
+      const itemQuery = `query {
+        boards(ids: [${boardId}]) {
+          items(ids: [${emitForm.itemId.trim()}]) {
+            id
+            name
+            column_values {
+              id
+              text
+              value
+            }
+            subitems {
+              id
+              name
+              column_values {
+                id
+                text
+                value
+              }
+            }
+          }
+        }
+      }`;
+
+      const itemResponse = await monday.api(itemQuery);
+      const mondayItem = itemResponse?.data?.boards?.[0]?.items?.[0];
+      if (!mondayItem) {
+        throw new Error("No se encontró el item en Monday para emitir Factura C");
+      }
+
       const payload = {
         monday_account_id: context.account.id.toString(),
         board_id: boardId,
         item_id: emitForm.itemId.trim(),
+        item_snapshot: {
+          id: mondayItem.id,
+          name: mondayItem.name,
+          main_columns: mondayItem.column_values || [],
+          subitems: (mondayItem.subitems || []).map((subitem) => ({
+            id: subitem.id,
+            name: subitem.name,
+            column_values: subitem.column_values || [],
+          })),
+        },
       };
 
       const response = await axios.post(`${API_URL}/invoices/emit-c`, payload, {
