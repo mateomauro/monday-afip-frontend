@@ -132,10 +132,6 @@ const App = () => {
   const boardId = context?.boardId || context?.locationContext?.boardId || null;
   const appFeatureId = context?.appFeatureId || null;
   const viewIdFromHref = locationData?.href?.match(/\/views\/(\d+)/)?.[1] || null;
-  const mappingStorageKey =
-    context?.account?.id && boardId
-      ? `afip:mapping_v2:${context.account.id}:${boardId}:${viewIdFromHref || "no-view"}`
-      : null;
 
   // Fetch columns when context is ready
   useEffect(() => {
@@ -233,6 +229,14 @@ const App = () => {
               : ""
           );
         }
+
+        if (data?.visualMapping?.mapping && typeof data.visualMapping.mapping === "object") {
+          setMapping(data.visualMapping.mapping);
+          setIsMappingLocked(Boolean(data.visualMapping.is_locked));
+        } else {
+          setMapping({});
+          setIsMappingLocked(false);
+        }
       } catch (err) {
         console.error("No se pudieron recuperar datos guardados:", err);
         setApiStatus("error");
@@ -244,23 +248,6 @@ const App = () => {
 
     fetchSavedSetup();
   }, [context, boardId, viewIdFromHref, appFeatureId]);
-
-  useEffect(() => {
-    if (!mappingStorageKey) return;
-
-    const savedMappingRaw = localStorage.getItem(mappingStorageKey);
-    if (!savedMappingRaw) return;
-
-    try {
-      const savedMapping = JSON.parse(savedMappingRaw);
-      if (savedMapping && typeof savedMapping === "object") {
-        setMapping(savedMapping);
-        setIsMappingLocked(Object.keys(savedMapping).length > 0);
-      }
-    } catch (err) {
-      console.error("No se pudo parsear el mapeo guardado:", err);
-    }
-  }, [mappingStorageKey]);
 
   useEffect(() => {
     if (activeSection !== "datos" && hasSavedFiscalData) {
@@ -395,25 +382,46 @@ const App = () => {
     return "Pendiente";
   };
 
-  const handleSaveVisualMapping = () => {
+  const handleSaveVisualMapping = async () => {
     const missingFields = requiredMappingFields.filter((field) => !mapping[field]);
     if (missingFields.length > 0) {
       alert("Faltan campos por mapear antes de guardar.");
       return;
     }
 
-    if (!mappingStorageKey) {
-      alert("No se pudo identificar el tablero/vista para guardar el mapeo.");
+    if (!context?.account?.id || !boardId) {
+      alert("No se pudo identificar cuenta/tablero para guardar el mapeo.");
       return;
     }
 
-    localStorage.setItem(mappingStorageKey, JSON.stringify(mapping));
-    setIsMappingLocked(true);
-    monday.execute("notice", {
-      message: "Mapeo visual guardado correctamente",
-      type: "success",
-      duration: 4000,
-    });
+    setIsLoading(true);
+    try {
+      await axios.post(`${API_URL}/mappings`, {
+        monday_account_id: context.account.id.toString(),
+        board_id: boardId,
+        view_id: viewIdFromHref,
+        app_feature_id: appFeatureId,
+        mapping,
+        is_locked: true,
+      });
+
+      setIsMappingLocked(true);
+      monday.execute("notice", {
+        message: "Mapeo visual guardado correctamente",
+        type: "success",
+        duration: 4000,
+      });
+    } catch (err) {
+      const errorMsg = err?.response?.data?.error || err?.message || "Error al guardar mapeo visual";
+      alert(errorMsg);
+      monday.execute("notice", {
+        message: errorMsg,
+        type: "error",
+        duration: 4000,
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const renderVisualSelect = (fieldId, placeholderText, scope = "board") => {
